@@ -1,72 +1,37 @@
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
+from typing import List
 
-from app.audio import AudioSynth
-from app.exporter import VideoExporter
-from app.planner import VideoPlanner
+from moviepy.editor import AudioFileClip, VideoFileClip
+
+from app.planner import Scene
+from app.render import VideoRenderer
 
 
-class VideoGenerationAgent:
-    def __init__(self, settings_path: str | Path = "config/settings.yaml"):
-        self.planner = VideoPlanner(settings_path)
-        self.exporter = VideoExporter()
+class VideoExporter:
+    def __init__(self, renderer: VideoRenderer | None = None):
+        self.renderer = renderer or VideoRenderer()
 
-    def generate_video(
-        self,
-        topic: str,
-        style: str = "cinematic",
-        tone: str = "persuasive",
-        audience: str = "general audience",
-        output_path: str | Path = "outputs/final_video.mp4",
-        duration_seconds: int | None = None,
-    ) -> dict:
-        scenes = self.planner.plan_video(topic, style, tone, audience, duration_seconds)
-        narration = " ".join(scene.script for scene in scenes)
-
+    def export(self, scenes: List[Scene], output_path: str | Path, audio_path: str | Path | None = None) -> Path:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
 
-        audio_path = output.with_suffix(".voiceover.mp3")
-        generated_audio = AudioSynth(language="en").generate_voiceover(narration, audio_path)
+        temp_video = output.with_suffix(".tmp.mp4")
+        self.renderer.write_video(scenes, temp_video)
 
-        final_path = self.exporter.export(scenes, output, audio_path=generated_audio)
+        if audio_path is not None and Path(audio_path).exists():
+            video = VideoFileClip(str(temp_video))
+            audio = AudioFileClip(str(audio_path))
+            final_video = video.set_audio(audio)
+            final_video.write_videofile(str(output), codec="libx264", fps=self.renderer.fps, audio_codec="aac")
+            video.close()
+            audio.close()
+            final_video.close()
+            if temp_video.exists():
+                temp_video.unlink()
+            return output
 
-        return {
-            "topic": topic,
-            "style": style,
-            "tone": tone,
-            "audience": audience,
-            "scene_count": len(scenes),
-            "duration_seconds": sum(scene.duration for scene in scenes),
-            "output_path": str(final_path),
-        }
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate a 1-minute expert video from a brief.")
-    parser.add_argument("--topic", required=True, help="Core topic for the video.")
-    parser.add_argument("--style", default="cinematic", help="Visual style for the video.")
-    parser.add_argument("--tone", default="persuasive", help="Narration tone.")
-    parser.add_argument("--audience", default="general audience", help="Target audience.")
-    parser.add_argument("--output", default="outputs/demo.mp4", help="Output path for the MP4 file.")
-    parser.add_argument("--duration", type=int, default=60, help="Target duration in seconds.")
-
-    args = parser.parse_args()
-
-    agent = VideoGenerationAgent()
-    result = agent.generate_video(
-        topic=args.topic,
-        style=args.style,
-        tone=args.tone,
-        audience=args.audience,
-        output_path=args.output,
-        duration_seconds=args.duration,
-    )
-
-    print(result)
-
-
-if __name__ == "__main__":
-    main()
+        if temp_video.exists():
+            temp_video.rename(output)
+        return output

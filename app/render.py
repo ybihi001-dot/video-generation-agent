@@ -1,131 +1,79 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List
-import json
+from typing import List
 
-import yaml
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
-
-@dataclass
-class Scene:
-    index: int
-    title: str
-    duration: int
-    text: str
-    visual: str
-    script: str
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+from app.planner import Scene
 
 
-class VideoPlanner:
-    def __init__(self, settings_path: str | Path | None = None):
-        self.settings_path = Path(settings_path) if settings_path else Path("config/settings.yaml")
-        self.settings = self._load_settings()
+class VideoRenderer:
+    def __init__(self, width: int = 1280, height: int = 720, fps: int = 24):
+        self.width = width
+        self.height = height
+        self.fps = fps
 
-    def _load_settings(self) -> Dict[str, Any]:
-        with self.settings_path.open("r", encoding="utf-8") as file:
-            return yaml.safe_load(file) or {}
+    def render_scene(self, scene: Scene, accent: tuple[int, int, int] = (76, 160, 255)) -> np.ndarray:
+        image = Image.new("RGB", (self.width, self.height), color=(15, 18, 30))
+        draw = ImageDraw.Draw(image)
 
-    def plan_video(
-        self,
-        topic: str,
-        style: str,
-        tone: str,
-        audience: str,
-        duration_seconds: int | None = None,
-    ) -> List[Scene]:
-        total = duration_seconds or self.settings.get("defaults", {}).get("duration_seconds", 60)
+        draw.rounded_rectangle((80, 80, self.width - 80, self.height - 80), radius=28, fill=(28, 34, 52))
+        draw.rounded_rectangle((100, 100, self.width - 100, 160), radius=18, fill=accent)
 
-        scenes = [
-            self._hook_scene(topic, style, tone),
-            self._intro_scene(topic, style, tone),
-            self._proof_scene(topic, audience),
-            self._value_scene(topic, audience),
-            self._action_scene(topic, audience),
-            self._closing_scene(topic),
-        ]
+        title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 54)
+        body_font = ImageFont.truetype("DejaVuSans.ttf", 32)
+        small_font = ImageFont.truetype("DejaVuSans.ttf", 20)
 
-        current_total = sum(scene.duration for scene in scenes)
-        if current_total != total:
-            delta = total - current_total
-            scenes[-1] = Scene(
-                index=scenes[-1].index,
-                title=scenes[-1].title,
-                duration=scenes[-1].duration + delta,
-                text=scenes[-1].text,
-                visual=scenes[-1].visual,
-                script=scenes[-1].script,
-            )
+        draw.text((130, 115), scene.title.upper(), font=title_font, fill=(255, 255, 255))
+        draw.text((120, 220), scene.text, font=body_font, fill=(240, 244, 255))
 
-        return scenes
+        visual_lines = self._wrap_text(scene.visual.split(" "), 28)
+        y = 300
+        for line in visual_lines[:4]:
+            draw.text((120, y), line, font=small_font, fill=(150, 180, 255))
+            y += 34
 
-    def _hook_scene(self, topic: str, style: str, tone: str) -> Scene:
-        return Scene(
-            index=1,
-            title="Hook",
-            duration=8,
-            text=f"{topic} is changing the way people work.",
-            visual=f"{style.title()} opening shot with bold typography and motion arc",
-            script=f"{topic} is changing the way {tone} teams create momentum.",
-        )
+        script_lines = self._wrap_text(scene.script.split(" "), 33)
+        y = 470
+        for line in script_lines[:3]:
+            draw.text((120, y), line, font=body_font, fill=(230, 230, 230))
+            y += 40
 
-    def _intro_scene(self, topic: str, style: str, tone: str) -> Scene:
-        return Scene(
-            index=2,
-            title="Why it matters",
-            duration=10,
-            text=f"Most people are still doing {topic.lower()} the hard way.",
-            visual=f"{style.title()} montage of friction, tasks, and pressure points",
-            script=f"Most people are still handling {topic.lower()} the hard way, and it slows everything down.",
-        )
+        time_label = f"00:{scene.duration:02d}"
+        draw.text((self.width - 180, self.height - 80), time_label, font=small_font, fill=(180, 200, 255))
+        return np.array(image)
 
-    def _proof_scene(self, topic: str, audience: str) -> Scene:
-        return Scene(
-            index=3,
-            title="The shift",
-            duration=12,
-            text=f"A smarter system turns complexity into clarity for {audience}.",
-            visual="Comparison split screen showing before and after workflow",
-            script=f"A smarter system turns complexity into clarity, especially for {audience} who need speed and focus.",
-        )
+    def render_plan(self, scenes: List[Scene]) -> List[np.ndarray]:
+        frames: List[np.ndarray] = []
+        for index, scene in enumerate(scenes):
+            accent = (76 + index * 25, 160 - index * 10, 255)
+            for _ in range(self.fps * scene.duration):
+                frames.append(self.render_scene(scene, accent=accent))
+        return frames
 
-    def _value_scene(self, topic: str, audience: str) -> Scene:
-        return Scene(
-            index=4,
-            title="Value",
-            duration=12,
-            text="You gain better decisions, faster execution, and less operational drag.",
-            visual="Product UI mockup, metrics, and workflow diagram animation",
-            script="You gain better decisions, faster execution, and less operational drag without sacrificing quality.",
-        )
+    def write_video(self, scenes: List[Scene], output_path: str | Path) -> Path:
+        frames = self.render_plan(scenes)
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        clip = ImageSequenceClip(frames, fps=self.fps)
+        clip.write_videofile(str(path), codec="libx264", fps=self.fps)
+        return path
 
-    def _action_scene(self, topic: str, audience: str) -> Scene:
-        return Scene(
-            index=5,
-            title="Next step",
-            duration=10,
-            text="Start today with a focused rollout and measurable outcomes.",
-            visual="Call-to-action card with simple timeline and checklist",
-            script=f"Start today with a focused rollout and measure the outcomes that matter most to {audience}.",
-        )
-
-    def _closing_scene(self, topic: str) -> Scene:
-        return Scene(
-            index=6,
-            title="Close",
-            duration=8,
-            text="This is not a trend. It is a practical advantage.",
-            visual="Final logo reveal and confident brand close-up",
-            script="This is not a trend; it is a practical advantage for people ready to move faster.",
-        )
-
-    def export_plan(self, plan: List[Scene], path: str | Path) -> None:
-        output = Path(path)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"scenes": [scene.to_dict() for scene in plan]}
-        with output.open("w", encoding="utf-8") as file:
-            json.dump(payload, file, indent=2)
+    @staticmethod
+    def _wrap_text(words: list[str], max_chars: int) -> list[str]:
+        lines: list[str] = []
+        current = ""
+        for word in words:
+            if not word:
+                continue
+            if len(current) + len(word) + 1 <= max_chars:
+                current = f"{current} {word}".strip()
+            else:
+                lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines

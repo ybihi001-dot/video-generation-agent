@@ -1,37 +1,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
 
-from moviepy.editor import AudioFileClip, VideoFileClip
+try:
+    from gtts import gTTS
+except ImportError:  # pragma: no cover
+    gTTS = None
 
-from app.planner import Scene
-from app.render import VideoRenderer
 
+class AudioSynth:
+    def __init__(self, language: str = "en"):
+        self.language = language
 
-class VideoExporter:
-    def __init__(self, renderer: VideoRenderer | None = None):
-        self.renderer = renderer or VideoRenderer()
+    def generate_voiceover(self, script: str, output_path: str | Path) -> str | None:
+        if gTTS is None:
+            return None
 
-    def export(self, scenes: List[Scene], output_path: str | Path, audio_path: str | Path | None = None) -> Path:
-        output = Path(output_path)
-        output.parent.mkdir(parents=True, exist_ok=True)
-
-        temp_video = output.with_suffix(".tmp.mp4")
-        self.renderer.write_video(scenes, temp_video)
-
-        if audio_path is not None and Path(audio_path).exists():
-            video = VideoFileClip(str(temp_video))
-            audio = AudioFileClip(str(audio_path))
-            final_video = video.set_audio(audio)
-            final_video.write_videofile(str(output), codec="libx264", fps=self.renderer.fps, audio_codec="aac")
-            video.close()
-            audio.close()
-            final_video.close()
-            if temp_video.exists():
-                temp_video.unlink()
-            return output
-
-        if temp_video.exists():
-            temp_video.rename(output)
-        return output
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tts = gTTS(text=script, lang=self.language, slow=False)
+        tts.save(str(path))
+        return str(path)
