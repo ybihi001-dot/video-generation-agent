@@ -1,0 +1,13 @@
+Create a 60-second video plan for the following brief:
+
+Topic: {topic}
+Style: {style}
+Tone: {tone}
+Audience: {audience}
+
+Return a JSON object with:
+- title
+- summary
+- scenes: a list of scenes with fields: title, duration, text, visual, script
+
+Ensure the total duration is exactly 60 seconds.

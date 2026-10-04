@@ -1,0 +1,17 @@
+# Video Generation Agent project defaults
+
+project_name: video-generation-agent
+
+defaults:
+  duration_seconds: 60
+  video:
+    width: 1280
+    height: 720
+    fps: 24
+    format: mp4
+  voiceover:
+    language: en
+    enabled: true
+
+output:
+  directory: outputs
