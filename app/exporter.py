@@ -1,23 +1,72 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
-try:
-    from gtts import gTTS
-except ImportError:  # pragma: no cover
-    gTTS = None
+from app.audio import AudioSynth
+from app.exporter import VideoExporter
+from app.planner import VideoPlanner
 
 
-class AudioSynth:
-    def __init__(self, language: str = "en"):
-        self.language = language
+class VideoGenerationAgent:
+    def __init__(self, settings_path: str | Path = "config/settings.yaml"):
+        self.planner = VideoPlanner(settings_path)
+        self.exporter = VideoExporter()
 
-    def generate_voiceover(self, script: str, output_path: str | Path) -> str | None:
-        if gTTS is None:
-            return None
+    def generate_video(
+        self,
+        topic: str,
+        style: str = "cinematic",
+        tone: str = "persuasive",
+        audience: str = "general audience",
+        output_path: str | Path = "outputs/final_video.mp4",
+        duration_seconds: int | None = None,
+    ) -> dict:
+        scenes = self.planner.plan_video(topic, style, tone, audience, duration_seconds)
+        narration = " ".join(scene.script for scene in scenes)
 
-        path = Path(output_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tts = gTTS(text=script, lang=self.language, slow=False)
-        tts.save(str(path))
-        return str(path)
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+
+        audio_path = output.with_suffix(".voiceover.mp3")
+        generated_audio = AudioSynth(language="en").generate_voiceover(narration, audio_path)
+
+        final_path = self.exporter.export(scenes, output, audio_path=generated_audio)
+
+        return {
+            "topic": topic,
+            "style": style,
+            "tone": tone,
+            "audience": audience,
+            "scene_count": len(scenes),
+            "duration_seconds": sum(scene.duration for scene in scenes),
+            "output_path": str(final_path),
+        }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate a 1-minute expert video from a brief.")
+    parser.add_argument("--topic", required=True, help="Core topic for the video.")
+    parser.add_argument("--style", default="cinematic", help="Visual style for the video.")
+    parser.add_argument("--tone", default="persuasive", help="Narration tone.")
+    parser.add_argument("--audience", default="general audience", help="Target audience.")
+    parser.add_argument("--output", default="outputs/demo.mp4", help="Output path for the MP4 file.")
+    parser.add_argument("--duration", type=int, default=60, help="Target duration in seconds.")
+
+    args = parser.parse_args()
+
+    agent = VideoGenerationAgent()
+    result = agent.generate_video(
+        topic=args.topic,
+        style=args.style,
+        tone=args.tone,
+        audience=args.audience,
+        output_path=args.output,
+        duration_seconds=args.duration,
+    )
+
+    print(result)
+
+
+if __name__ == "__main__":
+    main()

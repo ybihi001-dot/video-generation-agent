@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 import json
+
 import yaml
 
 
@@ -39,16 +40,16 @@ class VideoPlanner:
     ) -> List[Scene]:
         total = duration_seconds or self.settings.get("defaults", {}).get("duration_seconds", 60)
 
-        hook = self._hook_scene(topic, style, tone)
-        intro = self._intro_scene(topic, style, tone)
-        proof = self._proof_scene(topic, audience)
-        value = self._value_scene(topic, audience)
-        action = self._action_scene(topic, audience)
-        closing = self._closing_scene(topic)
+        scenes = [
+            self._hook_scene(topic, style, tone),
+            self._intro_scene(topic, style, tone),
+            self._proof_scene(topic, audience),
+            self._value_scene(topic, audience),
+            self._action_scene(topic, audience),
+            self._closing_scene(topic),
+        ]
 
-        scenes = [hook, intro, proof, value, action, closing]
         current_total = sum(scene.duration for scene in scenes)
-
         if current_total != total:
             delta = total - current_total
             scenes[-1] = Scene(
@@ -97,9 +98,9 @@ class VideoPlanner:
             index=4,
             title="Value",
             duration=12,
-            text=f"You gain better decisions, faster execution, and less operational drag.",
+            text="You gain better decisions, faster execution, and less operational drag.",
             visual="Product UI mockup, metrics, and workflow diagram animation",
-            script=f"You gain better decisions, faster execution, and less operational drag without sacrificing quality.",
+            script="You gain better decisions, faster execution, and less operational drag without sacrificing quality.",
         )
 
     def _action_scene(self, topic: str, audience: str) -> Scene:
@@ -107,7 +108,7 @@ class VideoPlanner:
             index=5,
             title="Next step",
             duration=10,
-            text=f"Start today with a focused rollout and measurable outcomes.",
+            text="Start today with a focused rollout and measurable outcomes.",
             visual="Call-to-action card with simple timeline and checklist",
             script=f"Start today with a focused rollout and measure the outcomes that matter most to {audience}.",
         )
@@ -117,9 +118,9 @@ class VideoPlanner:
             index=6,
             title="Close",
             duration=8,
-            text=f"This is not a trend. It is a practical advantage.",
+            text="This is not a trend. It is a practical advantage.",
             visual="Final logo reveal and confident brand close-up",
-            script=f"This is not a trend; it is a practical advantage for people ready to move faster.",
+            script="This is not a trend; it is a practical advantage for people ready to move faster.",
         )
 
     def export_plan(self, plan: List[Scene], path: str | Path) -> None:
